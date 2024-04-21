@@ -1,156 +1,92 @@
-require_relative 'piece.rb'
-
+# Implementation of a chess board with basic methods
+# to render and update the board itself
 class Board
-  include Hashable
-  attr_accessor :board
-  attr_accessor :captured_pieces
-  ROWS = 10
-  COLUMNS = 10
-  DOTS = "\u2237"
-  RANKS = [nil, 8, 7, 6, 5, 4, 3, 2, 1].freeze
+  COLORS = {
+    bg: {
+      purple: [187, 120, 247],
+      blue: [85, 85, 255]
+    },
+    fg: {
+      white: [255, 255, 255],
+      black: [0, 0, 0]
+    }
+  }.freeze
+
+  RANK = 0
+  FILE = 1
 
   def initialize
-    # @board = board_setup
-    @board = [
-      [" ", "a", "b", "c", "d", "e", "f", "g", "h", " "],
-      [8, DOTS, " ", DOTS, " ", DOTS, " ", DOTS, " ", 8],
-      [7, " ", DOTS, " ", DOTS, " ", DOTS, " ", DOTS, 7],
-      [6, DOTS, " ", DOTS, " ", DOTS, " ", DOTS, " ", 6],
-      [5, " ", DOTS, " ", DOTS, " ", DOTS, " ", DOTS, 5],
-      [4, DOTS, " ", DOTS, " ", DOTS, " ", DOTS, " ", 4],
-      [3, " ", DOTS, " ", DOTS, " ", DOTS, " ", DOTS, 3],
-      [2, DOTS, " ", DOTS, " ", DOTS, " ", DOTS, " ", 2],
-      [1, " ", DOTS, " ", DOTS, " ", DOTS, " ", DOTS, 1],
-      [" ", "a", "b", "c", "d", "e", "f", "g", "h", " "]
-    ]
-    @captured_pieces = {
-      white: [],
-      black: []
-    }
+    @board = Array.new(8) { Array.new(8) }
   end
 
-  def print_board
-    top_line = " ___    ________________________________   ___ \n"
-    bottom_line = " ̅ ̅ ̅     ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅    ̅ ̅ ̅  \n"
-    print top_line 
-    print_rows(top_line, bottom_line)
-    print bottom_line
+  def render
+    puts "┌#{'────────' * 8}┐"
+    render_each_rank
+    puts "└#{'────────' * 8}┘"
+    puts " #{('a'..'h').map { |letter| letter.center(8) }.join}"
+    puts
   end
 
-  def print_rows(top_line, bottom_line)
-    @board.each_with_index do |row, row_num|
-      if row_num == 9 then print top_line end
-      if row_num == 1 then print top_line end
-      row.each_with_index do |val, col_num|
-        if val.respond_to?(:symbol) then val = val.symbol end
-        if col_num != 1 && col_num != 9
-          print "| #{val} "
-        elsif col_num == 1
-          print "|  | #{val} "
-        elsif col_num == 9
-          print "|  | #{val} "
-        end
-      end
-      print "| \n"
-      if row_num == 0 then print bottom_line end
-      if row_num == 8 then print bottom_line end
+  def at_position(position)
+    @board[position[RANK]][position[FILE]]
+  end
+
+  def place_piece_at(position, new_piece)
+    @board[position[RANK]][position[FILE]] = new_piece
+  end
+
+  def remove_piece_at(position)
+    @board[position[RANK]][position[FILE]] = nil
+  end
+
+  def move_piece(piece_pos, dest_pos)
+    place_piece_at(dest_pos, at_position(piece_pos))
+    remove_piece_at(piece_pos)
+  end
+
+  def empty_at?(positions)
+    return positions.all? { |pos| at_position(pos).nil? } if positions.all? { |pos| pos.is_a?(Array) }
+
+    at_position(positions).nil?
+  end
+
+  def all_pieces_of(side)
+    @board.flatten.compact.select { |piece| piece.side == side }
+  end
+
+  private
+
+  def render_each_rank
+    bg_color_sequence = %i[purple blue purple blue purple blue purple blue]
+
+    @board.each_with_index do |rank, index|
+      fg_color_sequence = rank.map { |piece| piece.nil? ? :white : piece.side }
+      rank = rank.map { |piece| piece.nil? ? " " : piece.to_s }
+
+      puts build_rank(bg_color_sequence, fg_color_sequence, rank, (8 - index))
+      bg_color_sequence.rotate!
     end
   end
 
-  def square_to_xy(file, rank)
-    x = RANKS[rank.to_i]
-    y = file.upcase.ord - 64
-    [x,y]
+  def build_rank(bg_color_sequence, fg_color_sequence, rank_squares, rank_number)
+    blank_line = build_line(bg_color_sequence, [:white] * 8, "        " * 8)
+
+    <<~RANK
+      │#{blank_line}│
+      │#{build_line(bg_color_sequence, fg_color_sequence, rank_squares)}│ #{rank_number}
+      │#{blank_line}│
+    RANK
   end
 
-  def xy_to_square(coord)
-    rank = RANKS.find_index(coord[0])
-    file = (coord[1] + 64).chr.downcase
-    "#{file}#{rank}"
-  end
-
-  def move_piece(square1, square2)
-    curr_pos = square_to_xy(square1[0], square1[1].to_i)
-    next_pos = square_to_xy(square2[0], square2[1].to_i)
-    piece = @board[curr_pos[0]][curr_pos[1]]
-    new_square_val = @board[next_pos[0]][next_pos[1]]
-    if new_square_val.is_a?(String)
-      if piece.is_a?(Pawn) && piece.moves.has_key?(:en_passant)
-        if [curr_pos[0] + piece.moves[:en_passant][0][0], curr_pos[1] + piece.moves[:en_passant][0][1]] == next_pos
-          behind_square = [next_pos[0]+1, next_pos[1]]
-          if(piece.color == :black)
-            behind_square = [next_pos[0]-1, next_pos[1]]
-          end
-          behind_square_val = @board[behind_square[0]][behind_square[1]]
-          capture_piece(piece, behind_square_val, xy_to_square(behind_square))
-          update_old_spot(behind_square[0], behind_square[1])
-        end
-      else
-        puts "#{piece.color.capitalize} #{piece.type} moves from #{square1} to #{square2}"
-      end
-    else
-      capture_piece(piece, new_square_val, square2)
-    end
-    @board[next_pos[0]][next_pos[1]] = piece
-    piece.update_piece(next_pos)
-    update_old_spot(curr_pos[0], curr_pos[1])
-  end
-  
-  def capture_piece(piece, captured_piece, square)
-    @captured_pieces[captured_piece.color] << captured_piece
-    puts "-----------------------------------------------------"
-    print "#{piece.color.capitalize} #{piece.type} captures "
-    puts "#{captured_piece.color} #{captured_piece.type} on #{square}!"
-    puts "-----------------------------------------------------"
-  end
-
-  def update_old_spot(row, col)
-    sum = row + col
-    if sum.odd?
-      @board[row][col] = " "
-    elsif sum.even?
-      @board[row][col] = DOTS
+  def build_line(bg_color_sequence, fg_color_sequence, mid_points)
+    bg_color_sequence.each_with_index.reduce("") do |line, (bg_color, index)|
+      line + colorize(mid_points[index].center(8), COLORS[:bg][bg_color], COLORS[:fg][fg_color_sequence[index]])
     end
   end
 
-  def delete_arr_moves(piece, move_list)
-    move_list.delete_if do |spot|
-      spot_val = @board[spot[0]][spot[1]]
-      if spot_val.instance_of?(String)
-        next
-      elsif spot_val.color == piece.color
-        true
-      end
-    end
-    move_list
-  end
-
-  def delete_hash_moves(piece, moves)
-    moves.values.each do |move_list|
-      move_list.each_with_index do |move, idx|
-        spot_val = @board[move[0]][move[1]]
-        if spot_val.instance_of?(String)
-          next
-        elsif spot_val.color == piece.color
-          indices_to_remove = (idx..move_list.length-1)
-          move_list.delete_if.with_index{|_, i| indices_to_remove.include?(i)}
-        elsif spot_val.color != piece.color
-          indices_to_remove = (idx+1..move_list.length-1)
-          move_list.delete_if.with_index{|_, i| indices_to_remove.include?(i)}
-        end
-      end
-    end
-    moves
-  end
-
-  def check_surroundings(piece, moves)
-    if moves.is_a?(Array)
-      delete_arr_moves(piece, moves)
-    else
-      delete_hash_moves(piece, moves)
-    end
+  def colorize(char, background_values, foreground_values = COLORS[:fg][:white])
+    bg = background_values.join(";")
+    fg = foreground_values.join(";")
+    "\e[48;2;#{bg};38;2;#{fg}m#{char}\e[0m"
   end
 end
-
-# board_class = Board.new()
-# p board_class.board
